@@ -50,7 +50,7 @@ const editDocumentParams = Type.Object(
   { additionalProperties: false },
 );
 
-function makeEditDocumentTool(ctx: OpenClawPluginToolContext): AnyAgentTool {
+function makeEditDocumentTool(api: OpenClawPluginApi, ctx: OpenClawPluginToolContext): AnyAgentTool {
   const runtimeSessionKey = ctx.sessionKey;
   return {
     name: "edit_document",
@@ -59,6 +59,9 @@ function makeEditDocumentTool(ctx: OpenClawPluginToolContext): AnyAgentTool {
     parameters: editDocumentParams,
     async execute(toolCallId, params) {
       const sessionKey = bridgeSessionKeyForRuntimeSession(runtimeSessionKey) ?? runtimeSessionKey;
+      api.logger.info(
+        `[vellum-bridge] edit_document execute call=${toolCallId} runtime=${sessionFingerprint(runtimeSessionKey)} bridge=${sessionFingerprint(sessionKey)}`,
+      );
       if (!sessionKey) {
         return textResult(
           "edit_document is only callable from an active Vellum bridge request; no bridge session found.",
@@ -80,6 +83,7 @@ function makeEditDocumentTool(ctx: OpenClawPluginToolContext): AnyAgentTool {
         pendingToolResults.set(toolCallId, { resolve, sessionKey });
       });
 
+      api.logger.info(`[vellum-bridge] edit_document emitting tool call=${toolCallId}`);
       writeToolCallDelta(res, { toolCallId, name: "edit_document", arguments: params });
       endStreamAfterToolCall(res);
       responseBySessionKey.delete(sessionKey);
@@ -94,7 +98,7 @@ function makeEditDocumentTool(ctx: OpenClawPluginToolContext): AnyAgentTool {
 }
 
 export function registerEditDocumentTool(api: OpenClawPluginApi): void {
-  api.registerTool(makeEditDocumentTool, { name: "edit_document" });
+  api.registerTool((ctx) => makeEditDocumentTool(api, ctx), { name: "edit_document" });
 
   const policy: PluginTrustedToolPolicyRegistration = {
     id: "vellum-bridge-edit-document-allowlist",
