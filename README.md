@@ -1,7 +1,10 @@
 # vellum-bridge
 
+[![Vellum Bridge repository](https://img.shields.io/badge/repository-vellum--bridge-1F2937?logo=github)](https://github.com/commrelayunit/vellum-bridge)
+[![Vellum repository](https://img.shields.io/badge/Vellum-vellum-2F6F64?logo=github)](https://github.com/commrelayunit/vellum)
+
 An [OpenClaw](https://docs.openclaw.ai) gateway plugin that lets a self-hosted
-[Vellum](https://github.com/vellum-writing/vellum) editor talk to an OpenClaw
+[Vellum](https://github.com/commrelayunit/vellum) editor talk to an OpenClaw
 agent through Vellum's existing OpenAI-compatible `tools`/streamed
 `tool_calls` chat-completion loop — no changes needed on Vellum's side.
 
