@@ -43,6 +43,12 @@ export const responseBySessionKey = new Map<string, ServerResponse>();
 
 function sseWrite(res: ServerResponse, payload: unknown): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  // Plugin routes sit behind the gateway and Tailscale's reverse proxy.  The
+  // initial frame is flushed with the headers, but later small tool-call
+  // frames may otherwise remain buffered until the request times out.
+  res.flushHeaders();
+  const flush = (res as ServerResponse & { flush?: () => void }).flush;
+  flush?.call(res);
 }
 
 let chunkCounter = 0;
