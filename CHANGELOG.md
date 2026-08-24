@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 History prior to 1.0.0 was not tracked in this file.
 
+## [1.0.3] - 2026-08-24
+
+### Fixed
+
+- Preserve the bridge session identity by using OpenClaw's supported opaque
+  session-key shape, so trusted document edits are not normalized into ordinary
+  OpenAI sessions.
+
 ## [1.0.2] - 2026-08-24
 
 ### Fixed
