@@ -102,11 +102,18 @@ systemctl restart openclaw-gateway   # or however you run it
 
 ## Vellum-side setup
 
-Point Vellum's OpenAI-compatible `baseUrl` at:
+Point the Vellum agent/model that should use OpenClaw at this OpenAI-compatible
+base URL:
 
 ```
-https://<your-gateway-host>:<port>/vellum/v1/chat/completions
+https://<your-gateway-host>:<port>/vellum/v1
 ```
+
+Vellum should continue to use its ordinary OpenAI chat-completions client; it
+will append `/chat/completions` itself. There is no Vellum-specific request
+mode, session header, or tool-loop branch to implement. Use `openclaw/default`
+as the model to select the gateway default, or a model explicitly permitted by
+`plugins.entries.vellum-bridge.subagent.allowedModels`.
 
 The route requires standard OpenClaw gateway authentication (`auth:
 "gateway"`, `trusted-operator` scope) — send your gateway bearer token the
@@ -116,15 +123,11 @@ same way you would for any other authenticated gateway API call:
 Authorization: Bearer <gateway.auth.token>
 ```
 
-For the agent tool bridge (any request carrying `tools`), also send:
-
-```
-x-vellum-session-id: <a stable id for this Vellum document/conversation>
-```
-
-so the plugin can correlate multi-round tool-call loops to the same
-underlying agent session. Requests without `tools` are treated as plain
-passthrough and don't need this header.
+For agent tool-bridge requests, the plugin creates and tracks the trusted
+bridge session itself. It correlates Vellum's ordinary `role: tool` follow-up
+using the OpenAI `tool_call_id`, so Vellum does not need to carry a custom
+session header. Requests for normal provider/model ids without tools remain
+byte-transparent passthrough requests.
 
 ## Security notes
 

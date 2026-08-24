@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { randomUUID } from "node:crypto";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import {
   trustedSessionKeys,
@@ -7,7 +8,7 @@ import {
   writeFinalAssistantMessage,
   writeStreamError,
 } from "./session-bridge.js";
-import { resolvePendingToolResult } from "./edit-document-tool.js";
+import { resolvePendingToolResult, sessionKeyForPendingToolResult } from "./edit-document-tool.js";
 
 const ROUTE_PATH = "/vellum/v1/chat/completions";
 
@@ -25,6 +26,11 @@ function needsToolBridge(body: Record<string, unknown>, messages: ChatMessage[])
   const tools = body.tools as unknown[] | undefined;
   if (Array.isArray(tools) && tools.length > 0) return true;
   return messages[messages.length - 1]?.role === "tool";
+}
+
+/** `openclaw/*` is an internal runtime target, not an upstream provider. */
+function needsOpenClawRuntime(model: string): boolean {
+  return model.startsWith("openclaw/");
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -150,7 +156,10 @@ async function handleCodexBridge(
   const { runId } = await api.runtime.subagent.run({
     sessionKey,
     message: lastUserMessageText(messages),
-    model: model || undefined,
+    // `openclaw/default` selects the gateway's configured default model. It is
+    // an internal routing marker, not a model override, and therefore must not
+    // be passed through the plugin's deliberately narrow override allowlist.
+    model: needsOpenClawRuntime(model) ? undefined : model || undefined,
   });
 
   const result = await api.runtime.subagent.waitForRun({ runId, timeoutMs: 10 * 60 * 1000 });
@@ -213,17 +222,25 @@ export function registerVellumRoutes(api: OpenClawPluginApi): void {
       res.setHeader("connection", "keep-alive");
 
       const sessionHeader = req.headers["x-vellum-session-id"];
-      const sessionId = Array.isArray(sessionHeader) ? sessionHeader[0] : sessionHeader;
+      const suppliedSessionId = Array.isArray(sessionHeader) ? sessionHeader[0] : sessionHeader;
+      const lastMessage = messages[messages.length - 1];
+      const pendingSessionKey =
+        lastMessage?.role === "tool" && lastMessage.tool_call_id
+          ? sessionKeyForPendingToolResult(lastMessage.tool_call_id)
+          : undefined;
+      const sessionKey =
+        pendingSessionKey ??
+        (suppliedSessionId ? `agent:main:vellum:${suppliedSessionId}` : `agent:main:vellum:${randomUUID()}`);
 
       try {
-        if (needsToolBridge(body, messages)) {
-          if (!sessionId) {
+        if (needsToolBridge(body, messages) || needsOpenClawRuntime(model)) {
+          if (lastMessage?.role === "tool" && !pendingSessionKey && !suppliedSessionId) {
             res.statusCode = 400;
             res.setHeader("content-type", "application/json");
-            res.end(JSON.stringify({ error: { message: "x-vellum-session-id header is required for tool-bridge requests" } }));
+            res.end(JSON.stringify({ error: { message: "No matching pending Vellum tool call" } }));
             return true;
           }
-          await handleCodexBridge(api, res, `agent:main:vellum:${sessionId}`, messages, model);
+          await handleCodexBridge(api, res, sessionKey, messages, model);
         } else {
           await forwardToUpstream(api, req, res, body);
         }

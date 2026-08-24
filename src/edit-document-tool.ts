@@ -8,14 +8,22 @@ import type {
 import { textResult } from "openclaw/plugin-sdk/tool-results";
 import { trustedSessionKeys, responseBySessionKey, writeToolCallDelta, endStreamAfterToolCall } from "./session-bridge.js";
 
-/** toolCallId -> resolver for the eventual `role: tool` result from Vellum's follow-up request. */
-const pendingToolResults = new Map<string, (result: unknown) => void>();
+/**
+ * Tool calls awaiting the ordinary OpenAI `role: tool` follow-up from Vellum.
+ * The originating bridge session is retained here so the follow-up can be
+ * correlated without a Vellum-specific request header.
+ */
+const pendingToolResults = new Map<string, { resolve: (result: unknown) => void; sessionKey: string }>();
+
+export function sessionKeyForPendingToolResult(toolCallId: string): string | undefined {
+  return pendingToolResults.get(toolCallId)?.sessionKey;
+}
 
 export function resolvePendingToolResult(toolCallId: string, result: unknown): boolean {
-  const resolve = pendingToolResults.get(toolCallId);
-  if (!resolve) return false;
+  const pending = pendingToolResults.get(toolCallId);
+  if (!pending) return false;
   pendingToolResults.delete(toolCallId);
-  resolve(result);
+  pending.resolve(result);
   return true;
 }
 
@@ -34,7 +42,14 @@ function makeEditDocumentTool(ctx: OpenClawPluginToolContext): AnyAgentTool {
     description: "Edit the current live Vellum document.",
     parameters: editDocumentParams,
     async execute(toolCallId, params) {
-      const res = sessionKey ? responseBySessionKey.get(sessionKey) : undefined;
+      if (!sessionKey) {
+        return textResult(
+          "edit_document is only callable from an active Vellum bridge request; no bridge session found.",
+          undefined,
+        );
+      }
+
+      const res = responseBySessionKey.get(sessionKey);
       if (!res) {
         // No live Vellum request waiting on this session — refuse rather than
         // silently no-op, per the "never fall back to a local edit" constraint.
@@ -44,16 +59,18 @@ function makeEditDocumentTool(ctx: OpenClawPluginToolContext): AnyAgentTool {
         );
       }
 
+      const pendingResult = new Promise<unknown>((resolve) => {
+        pendingToolResults.set(toolCallId, { resolve, sessionKey });
+      });
+
       writeToolCallDelta(res, { toolCallId, name: "edit_document", arguments: params });
       endStreamAfterToolCall(res);
-      if (sessionKey) responseBySessionKey.delete(sessionKey);
+      responseBySessionKey.delete(sessionKey);
 
-      // Park this tool call until Vellum's next request delivers the `role: tool`
-      // result. The underlying Codex turn simply stays open/paused here — no
-      // separate session-resume mechanism needed.
-      const result = await new Promise<unknown>((resolve) => {
-        pendingToolResults.set(toolCallId, resolve);
-      });
+      // Park this tool call until Vellum's ordinary OpenAI `role: tool` follow-up
+      // arrives. The bridge correlates that follow-up via toolCallId; Vellum need
+      // not propagate a bridge-specific session header.
+      const result = await pendingResult;
       return textResult(typeof result === "string" ? result : JSON.stringify(result), undefined);
     },
   };
