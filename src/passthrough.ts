@@ -46,12 +46,21 @@ async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknow
   return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
 }
 
-function lastUserMessageText(messages: ChatMessage[]): string {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const m = messages[i];
-    if (m.role === "user" && typeof m.content === "string") return m.content;
-  }
-  return "";
+/**
+ * The OpenClaw subagent API accepts one prompt string, while Vellum sends an
+ * OpenAI-style message list.  Do not discard the system/document message here:
+ * it contains the live document identity, current content, and editing
+ * instructions.  Forwarding only the final user sentence turns a follow-up
+ * such as "try again" into a context-free agent run.
+ */
+function bridgePrompt(messages: ChatMessage[]): string {
+  return messages
+    .filter((message) => message.role !== "tool" && message.content !== undefined)
+    .map((message) => {
+      const content = typeof message.content === "string" ? message.content : JSON.stringify(message.content);
+      return `[${message.role}]\n${content}`;
+    })
+    .join("\n\n");
 }
 
 /** Known default base URLs (trailing slash required — joined with a relative
@@ -161,7 +170,7 @@ async function handleCodexBridge(
 
   const { runId } = await api.runtime.subagent.run({
     sessionKey,
-    message: lastUserMessageText(messages),
+    message: bridgePrompt(messages),
     // `openclaw/default` selects the gateway's configured default model. It is
     // an internal routing marker, not a model override, and therefore must not
     // be passed through the plugin's deliberately narrow override allowlist.
