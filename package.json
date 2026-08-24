@@ -1,9 +1,9 @@
 {
   "name": "openclaw-plugin-vellum-bridge",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "OpenClaw plugin that connects Vellum live-document editing to agent sessions.",
   "type": "module",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "repository": {
     "type": "git",
     "url": "https://github.com/commrelayunit/vellum-bridge.git"

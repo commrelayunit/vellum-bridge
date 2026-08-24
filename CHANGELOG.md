@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 History prior to 1.0.0 was not tracked in this file.
 
+## [1.0.7] - 2026-08-24
+
+### Changed
+
+- Relicense the project under GNU GPL v3.0 or later.
+
 ## [1.0.6] - 2026-08-24
 
 ### Fixed
