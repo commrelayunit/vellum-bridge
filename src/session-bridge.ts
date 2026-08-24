@@ -3,6 +3,41 @@ import type { ServerResponse } from "node:http";
 /** sessionKeys that were opened through our trusted /vellum/v1/chat/completions route. */
 export const trustedSessionKeys = new Set<string>();
 
+/**
+ * OpenClaw's embedded runtime may normalize the session key supplied to
+ * `subagent.run`. Keep the bridge-owned run ID as the authority, then bind the
+ * runtime's actual session key when the trusted tool policy sees it.
+ */
+const bridgeSessionKeyByRunId = new Map<string, string>();
+const bridgeSessionKeyByRuntimeSessionKey = new Map<string, string>();
+
+export function beginBridgeRun(runId: string, bridgeSessionKey: string): void {
+  bridgeSessionKeyByRunId.set(runId, bridgeSessionKey);
+}
+
+export function finishBridgeRun(runId: string): void {
+  const bridgeSessionKey = bridgeSessionKeyByRunId.get(runId);
+  bridgeSessionKeyByRunId.delete(runId);
+  if (!bridgeSessionKey) return;
+  for (const [runtimeSessionKey, mappedBridgeSessionKey] of bridgeSessionKeyByRuntimeSessionKey) {
+    if (mappedBridgeSessionKey === bridgeSessionKey) {
+      bridgeSessionKeyByRuntimeSessionKey.delete(runtimeSessionKey);
+    }
+  }
+}
+
+export function bindRuntimeSessionKey(runId: string | undefined, runtimeSessionKey: string | undefined): string | undefined {
+  if (!runId || !runtimeSessionKey) return undefined;
+  const bridgeSessionKey = bridgeSessionKeyByRunId.get(runId);
+  if (!bridgeSessionKey) return undefined;
+  bridgeSessionKeyByRuntimeSessionKey.set(runtimeSessionKey, bridgeSessionKey);
+  return bridgeSessionKey;
+}
+
+export function bridgeSessionKeyForRuntimeSession(runtimeSessionKey: string | undefined): string | undefined {
+  return runtimeSessionKey ? bridgeSessionKeyByRuntimeSessionKey.get(runtimeSessionKey) : undefined;
+}
+
 /** The open SSE response currently waiting on a turn for a given sessionKey. */
 export const responseBySessionKey = new Map<string, ServerResponse>();
 

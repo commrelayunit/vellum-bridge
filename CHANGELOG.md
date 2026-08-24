@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 History prior to 1.0.0 was not tracked in this file.
 
+## [1.0.1] - 2026-08-24
+
+### Fixed
+
+- Bind OpenClaw's runtime-normalized session key to the authenticated bridge
+  run, so trusted Vellum tool calls remain eligible for `edit_document`.
+
 ## [1.0.0] - 2026-08-24
 
 ### Added

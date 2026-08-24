@@ -4,6 +4,8 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import {
   trustedSessionKeys,
   responseBySessionKey,
+  beginBridgeRun,
+  finishBridgeRun,
   writeAssistantRoleOpen,
   writeFinalAssistantMessage,
   writeStreamError,
@@ -162,7 +164,13 @@ async function handleCodexBridge(
     model: needsOpenClawRuntime(model) ? undefined : model || undefined,
   });
 
-  const result = await api.runtime.subagent.waitForRun({ runId, timeoutMs: 10 * 60 * 1000 });
+  beginBridgeRun(runId, sessionKey);
+  let result;
+  try {
+    result = await api.runtime.subagent.waitForRun({ runId, timeoutMs: 10 * 60 * 1000 });
+  } finally {
+    finishBridgeRun(runId);
+  }
 
   const currentRes = responseBySessionKey.get(sessionKey);
   if (!currentRes || currentRes.writableEnded) {

@@ -6,7 +6,14 @@ import type {
   PluginTrustedToolPolicyRegistration,
 } from "openclaw/plugin-sdk/plugin-entry";
 import { textResult } from "openclaw/plugin-sdk/tool-results";
-import { trustedSessionKeys, responseBySessionKey, writeToolCallDelta, endStreamAfterToolCall } from "./session-bridge.js";
+import {
+  trustedSessionKeys,
+  responseBySessionKey,
+  writeToolCallDelta,
+  endStreamAfterToolCall,
+  bindRuntimeSessionKey,
+  bridgeSessionKeyForRuntimeSession,
+} from "./session-bridge.js";
 
 /**
  * Tool calls awaiting the ordinary OpenAI `role: tool` follow-up from Vellum.
@@ -35,13 +42,14 @@ const editDocumentParams = Type.Object(
 );
 
 function makeEditDocumentTool(ctx: OpenClawPluginToolContext): AnyAgentTool {
-  const sessionKey = ctx.sessionKey;
+  const runtimeSessionKey = ctx.sessionKey;
   return {
     name: "edit_document",
     label: "Edit Document",
     description: "Edit the current live Vellum document.",
     parameters: editDocumentParams,
     async execute(toolCallId, params) {
+      const sessionKey = bridgeSessionKeyForRuntimeSession(runtimeSessionKey) ?? runtimeSessionKey;
       if (!sessionKey) {
         return textResult(
           "edit_document is only callable from an active Vellum bridge request; no bridge session found.",
@@ -84,8 +92,8 @@ export function registerEditDocumentTool(api: OpenClawPluginApi): void {
     description: "Only allow edit_document for sessions opened through the Vellum bridge route.",
     evaluate(event, ctx) {
       if (event.toolName !== "edit_document") return undefined;
-      const sessionKey = ctx.sessionKey;
-      if (!sessionKey || !trustedSessionKeys.has(sessionKey)) {
+      const bridgeSessionKey = bindRuntimeSessionKey(ctx.runId, ctx.sessionKey);
+      if (!bridgeSessionKey && (!ctx.sessionKey || !trustedSessionKeys.has(ctx.sessionKey))) {
         return { block: true, blockReason: "edit_document is only allowed for Vellum-bridge sessions." };
       }
       return undefined;
