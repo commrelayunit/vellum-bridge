@@ -251,11 +251,10 @@ export function registerVellumRoutes(api: OpenClawPluginApi): void {
           : undefined;
       const sessionKey =
         pendingSessionKey ??
-        // `agent:<agent>:<opaque-peer>` is the supported shape for a custom
-        // session. A fourth colon-delimited segment makes OpenClaw normalize
-        // this into a regular OpenAI session, losing the bridge identity before
-        // the trusted-tool policy sees it.
-        (suppliedSessionId ? `agent:main:vellum-${suppliedSessionId}` : `agent:main:vellum-${randomUUID()}`);
+        // Use the established custom-session shape.  In the current runtime,
+        // the hyphenated form can create a session record without dispatching
+        // its model turn; run-to-bridge binding handles policy identity below.
+        (suppliedSessionId ? `agent:main:vellum:${suppliedSessionId}` : `agent:main:vellum:${randomUUID()}`);
 
       api.logger.info(
         `[vellum-bridge] session source=${pendingSessionKey ? "tool-followup" : suppliedSessionId ? "header" : "generated"} fingerprint=${sessionFingerprint(sessionKey)}`,
