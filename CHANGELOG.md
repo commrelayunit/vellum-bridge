@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 History prior to 1.0.0 was not tracked in this file.
 
+## [1.0.2] - 2026-08-24
+
+### Fixed
+
+- Add redacted session-correlation diagnostics for live bridge requests.
+
 ## [1.0.1] - 2026-08-24
 
 ### Fixed

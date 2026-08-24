@@ -15,6 +15,15 @@ import {
   bridgeSessionKeyForRuntimeSession,
 } from "./session-bridge.js";
 
+function sessionFingerprint(sessionKey: string | undefined): string {
+  if (!sessionKey) return "none";
+  // Keep operational logs useful without emitting a caller-controlled session
+  // identifier verbatim.
+  let hash = 0;
+  for (const char of sessionKey) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return hash.toString(16).padStart(8, "0");
+}
+
 /**
  * Tool calls awaiting the ordinary OpenAI `role: tool` follow-up from Vellum.
  * The originating bridge session is retained here so the follow-up can be
@@ -93,6 +102,9 @@ export function registerEditDocumentTool(api: OpenClawPluginApi): void {
     evaluate(event, ctx) {
       if (event.toolName !== "edit_document") return undefined;
       const bridgeSessionKey = bindRuntimeSessionKey(ctx.runId, ctx.sessionKey);
+      api.logger.info(
+        `[vellum-bridge] edit_document policy run=${ctx.runId ?? "none"} runtime=${sessionFingerprint(ctx.sessionKey)} bridge=${sessionFingerprint(bridgeSessionKey)}`,
+      );
       if (!bridgeSessionKey && (!ctx.sessionKey || !trustedSessionKeys.has(ctx.sessionKey))) {
         return { block: true, blockReason: "edit_document is only allowed for Vellum-bridge sessions." };
       }

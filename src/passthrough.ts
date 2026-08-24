@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import {
   trustedSessionKeys,
@@ -13,6 +13,10 @@ import {
 import { resolvePendingToolResult, sessionKeyForPendingToolResult } from "./edit-document-tool.js";
 
 const ROUTE_PATH = "/vellum/v1/chat/completions";
+
+function sessionFingerprint(sessionKey: string): string {
+  return createHash("sha256").update(sessionKey).digest("hex").slice(0, 12);
+}
 
 type ChatMessage = {
   role: string;
@@ -239,6 +243,10 @@ export function registerVellumRoutes(api: OpenClawPluginApi): void {
       const sessionKey =
         pendingSessionKey ??
         (suppliedSessionId ? `agent:main:vellum:${suppliedSessionId}` : `agent:main:vellum:${randomUUID()}`);
+
+      api.logger.info(
+        `[vellum-bridge] session source=${pendingSessionKey ? "tool-followup" : suppliedSessionId ? "header" : "generated"} fingerprint=${sessionFingerprint(sessionKey)}`,
+      );
 
       try {
         if (needsToolBridge(body, messages) || needsOpenClawRuntime(model)) {
