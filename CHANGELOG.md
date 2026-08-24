@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 History prior to 1.0.0 was not tracked in this file.
 
+## [1.0.6] - 2026-08-24
+
+### Fixed
+
+- Preserve the complete Vellum message context when starting bridge runs, so
+  document-edit requests retain the live document instructions.
+- Use dispatchable Vellum session keys and bind their runtime identities before
+  the trusted `edit_document` policy is evaluated.
+- Flush streamed tool-call frames through the gateway and reverse proxy, so
+  Vellum receives each tool call without waiting for the request to close.
+
 ## [1.0.3] - 2026-08-24
 
 ### Fixed
