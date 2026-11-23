@@ -1,14 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { registerEditDocumentTool, resolvePendingToolResult } from "../dist/edit-document-tool.js";
+import {
+  registerEditDocumentTool,
+  resolvePendingToolResult,
+  sessionKeyForPendingToolResult,
+} from "../dist/edit-document-tool.js";
+import { registerVellumRoutes } from "../dist/passthrough.js";
 import { responseBySessionKey, trustedSessionKeys } from "../dist/session-bridge.js";
 
 function mockResponse() {
   const writes = [];
   return {
+    headersSent: false,
     writableEnded: false,
     writes,
+    setHeader() {},
     write(value) {
       writes.push(value);
       return true;
@@ -17,6 +24,17 @@ function mockResponse() {
       this.writableEnded = true;
     },
     flushHeaders() {},
+  };
+}
+
+function request(body, sessionId) {
+  return {
+    method: "POST",
+    url: "/vellum/v1/chat/completions",
+    headers: sessionId ? { "x-vellum-session-id": sessionId } : {},
+    async *[Symbol.asyncIterator]() {
+      yield Buffer.from(JSON.stringify(body));
+    },
   };
 }
 
@@ -61,4 +79,87 @@ test("edit_document emits Vellum replacements and resumes two sequential tool fo
 
   responseBySessionKey.delete(sessionKey);
   trustedSessionKeys.delete(sessionKey);
+});
+
+test("a resumed tool_choice none request releases the parked run into final assistant text", async () => {
+  let factory;
+  let route;
+  let finishRun;
+  let signalRunStarted;
+  const waitForRun = new Promise((resolve) => {
+    finishRun = resolve;
+  });
+  const runStarted = new Promise((resolve) => {
+    signalRunStarted = resolve;
+  });
+  const api = {
+    logger: { info() {}, error() {} },
+    registerTool(candidate) {
+      factory = candidate;
+    },
+    registerTrustedToolPolicy() {},
+    registerHttpRoute(candidate) {
+      route = candidate;
+    },
+    runtime: {
+      subagent: {
+        async run() {
+          signalRunStarted();
+          return { runId: "run-final-turn" };
+        },
+        async waitForRun() {
+          return waitForRun;
+        },
+        async getSessionMessages() {
+          return { messages: [{ role: "assistant", content: "All requested edits are complete." }] };
+        },
+      },
+    },
+  };
+  registerEditDocumentTool(api);
+  registerVellumRoutes(api);
+
+  const sessionId = "resumed-final";
+  const sessionKey = `agent:main:vellum:${sessionId}`;
+  const firstResponse = mockResponse();
+  const firstRequest = route.handler(
+    request({ model: "openclaw/default", tools: [{ type: "function" }], messages: [{ role: "user", content: "edit" }] }, sessionId),
+    firstResponse,
+  );
+  await runStarted;
+
+  const tool = factory({ sessionKey });
+  let currentResponse = firstResponse;
+  for (let round = 1; round <= 6; round += 1) {
+    const callId = `call-${round}`;
+    const pending = tool.execute(callId, { old_string: `before-${round}`, new_string: `after-${round}` });
+    assert.equal(toolCall(currentResponse).id, callId);
+
+    const nextResponse = mockResponse();
+    await route.handler(
+      request(
+        {
+          model: "openclaw/default",
+          ...(round === 6 ? { tool_choice: "none" } : {}),
+          messages: [{ role: "tool", tool_call_id: callId, content: "applied" }],
+        },
+        sessionId,
+      ),
+      nextResponse,
+    );
+    assert.equal((await pending).content[0].text, "applied");
+    currentResponse = nextResponse;
+  }
+
+  const lateEdit = await tool.execute("call-seven", { old_string: "after", new_string: "never" });
+  assert.match(lateEdit.content[0].text, /tool_choice: none/);
+  assert.equal(sessionKeyForPendingToolResult("call-seven"), undefined);
+  assert.equal(currentResponse.writes.filter((line) => line.includes("tool_calls")).length, 0);
+
+  finishRun({ status: "ok" });
+  await firstRequest;
+  assert.equal(currentResponse.writableEnded, true);
+  assert.match(currentResponse.writes.join(""), /All requested edits are complete/);
+  assert.equal(responseBySessionKey.has(sessionKey), false);
+  assert.equal(trustedSessionKeys.has(sessionKey), false);
 });

@@ -31,6 +31,21 @@ function sessionFingerprint(sessionKey: string | undefined): string {
  */
 const pendingToolResults = new Map<string, { resolve: (result: unknown) => void; sessionKey: string }>();
 
+/**
+ * A resumed Vellum request can explicitly end the proposal loop with
+ * `tool_choice: "none"`. Keep that constraint with the bridge session while
+ * the already-running agent consumes the preceding tool result.
+ */
+const noToolSessions = new Set<string>();
+
+export function markNoToolSession(sessionKey: string): void {
+  noToolSessions.add(sessionKey);
+}
+
+export function clearNoToolSession(sessionKey: string): void {
+  noToolSessions.delete(sessionKey);
+}
+
 export function sessionKeyForPendingToolResult(toolCallId: string): string | undefined {
   return pendingToolResults.get(toolCallId)?.sessionKey;
 }
@@ -66,6 +81,17 @@ function makeEditDocumentTool(api: OpenClawPluginApi, ctx: OpenClawPluginToolCon
       if (!sessionKey) {
         return textResult(
           "edit_document is only callable from an active Vellum bridge request; no bridge session found.",
+          undefined,
+        );
+      }
+
+      if (noToolSessions.has(sessionKey)) {
+        // Vellum has explicitly closed its edit-proposal loop.  Reply to the
+        // still-running agent in-band so it can write its final answer, but do
+        // not create a pending call or emit an SSE tool call Vellum must refuse.
+        api.logger.info(`[vellum-bridge] edit_document suppressed by tool_choice=none call=${toolCallId}`);
+        return textResult(
+          "Vellum has ended document edit proposals for this turn (tool_choice: none). Do not request another edit; provide the final response.",
           undefined,
         );
       }
