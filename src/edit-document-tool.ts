@@ -45,7 +45,8 @@ export function resolvePendingToolResult(toolCallId: string, result: unknown): b
 
 const editDocumentParams = Type.Object(
   {
-    replacement: Type.String({ description: "Full replacement text for the live document." }),
+    old_string: Type.String({ description: "Exact text in the live document to replace." }),
+    new_string: Type.String({ description: "Replacement text for old_string." }),
   },
   { additionalProperties: false },
 );
