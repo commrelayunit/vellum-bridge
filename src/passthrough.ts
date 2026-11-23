@@ -10,7 +10,12 @@ import {
   writeFinalAssistantMessage,
   writeStreamError,
 } from "./session-bridge.js";
-import { resolvePendingToolResult, sessionKeyForPendingToolResult } from "./edit-document-tool.js";
+import {
+  clearNoToolSession,
+  markNoToolSession,
+  resolvePendingToolResult,
+  sessionKeyForPendingToolResult,
+} from "./edit-document-tool.js";
 
 const ROUTE_PATH = "/vellum/v1/chat/completions";
 
@@ -142,6 +147,7 @@ async function handleCodexBridge(
   sessionKey: string,
   messages: ChatMessage[],
   model: string,
+  noToolsAllowed: boolean,
 ): Promise<void> {
   const lastMessage = messages[messages.length - 1];
 
@@ -151,6 +157,7 @@ async function handleCodexBridge(
     // a new subagent run here — the original run from the first request is still
     // alive, paused inside edit_document's execute().
     responseBySessionKey.set(sessionKey, res);
+    if (noToolsAllowed) markNoToolSession(sessionKey);
     const content = typeof lastMessage.content === "string" ? lastMessage.content : JSON.stringify(lastMessage.content);
     const delivered = resolvePendingToolResult(lastMessage.tool_call_id, content);
     if (!delivered) {
@@ -183,6 +190,7 @@ async function handleCodexBridge(
     result = await api.runtime.subagent.waitForRun({ runId, timeoutMs: 10 * 60 * 1000 });
   } finally {
     finishBridgeRun(runId);
+    clearNoToolSession(sessionKey);
   }
 
   const currentRes = responseBySessionKey.get(sessionKey);
@@ -268,7 +276,7 @@ export function registerVellumRoutes(api: OpenClawPluginApi): void {
             res.end(JSON.stringify({ error: { message: "No matching pending Vellum tool call" } }));
             return true;
           }
-          await handleCodexBridge(api, res, sessionKey, messages, model);
+          await handleCodexBridge(api, res, sessionKey, messages, model, body.tool_choice === "none");
         } else {
           await forwardToUpstream(api, req, res, body);
         }

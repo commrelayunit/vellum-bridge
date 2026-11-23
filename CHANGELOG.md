@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 History prior to 1.0.0 was not tracked in this file.
 
+## [1.0.9] - 2026-11-23
+
+### Fixed
+
+- Honor `tool_choice: "none"` on a resumed Vellum tool-result request. Late
+  `edit_document` attempts now receive a bounded in-band result so the active
+  agent can finish its response without emitting an unexecutable seventh call.
+
 ## [1.0.8] - 2026-11-23
 
 ### Fixed
