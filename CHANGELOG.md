@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 History prior to 1.0.0 was not tracked in this file.
 
+## [1.0.8] - 2026-11-23
+
+### Fixed
+
+- Emit Vellum's `edit_document` contract as `{ old_string, new_string }`,
+  allowing sequential document edits to resume the same parked OpenClaw run.
+
 ## [1.0.7] - 2026-08-24
 
 ### Changed
